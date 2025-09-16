@@ -6,6 +6,7 @@ import os
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import extra_streamlit_components as stx
+import jwt  # pip install pyjwt
 
 # --- CONFIGURAÇÃO INICIAL ---
 load_dotenv()
@@ -20,28 +21,57 @@ if not openai.api_key:
     st.error("Chave da API da OpenAI não encontrada! Configure a variável OPENAI_API_KEY.")
     st.stop()
 
+# --- SEGREDO PARA JWT ---
+JWT_SECRET = os.getenv("JWT_SECRET_KEY", "MINHA_CHAVE_SECRETA")  # muda no deploy
+JWT_EXP_DAYS = 7  # dias de validade do token
+
 # --- FUNÇÕES DE LOGIN ---
+def create_jwt(username):
+    payload = {"user": username, "exp": datetime.utcnow() + timedelta(days=JWT_EXP_DAYS)}
+    token = jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+    return token
+
+def decode_jwt(token):
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        return payload
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
+        return None
+
 def show_login_page():
     st.title("Login")
     st.info("Esta é uma aplicação de uso pessoal.")
 
-    # CORRECT_USERNAME = os.getenv("LOGIN_USERNAME", "jorge")
-    # CORRECT_PASSWORD = os.getenv("LOGIN_PASSWORD", "dream2025@")
+    CORRECT_USERNAME = os.getenv("LOGIN_USERNAME", "jorge")
+    CORRECT_PASSWORD = os.getenv("LOGIN_PASSWORD", "dream2025@")
 
-    CORRECT_USERNAME = ''
-    CORRECT_PASSWORD =''
     username = st.text_input("Utilizador", key="username_input")
     password = st.text_input("Senha", type="password", key="password_input")
 
     if st.button("Entrar", key="login_button"):
         if username == CORRECT_USERNAME and password == CORRECT_PASSWORD:
+            token = create_jwt(username)
+            cookies.set("user_session", token, max_age=JWT_EXP_DAYS*24*60*60)  # cookie válido por X dias
             st.session_state.is_logged_in = True
-            expires_at = datetime.now() + timedelta(hours=3)
-            cookies.set("user_session", "logged_in", expires_at=expires_at)
             st.success("Login bem-sucedido!")
-            st.rerun()
+            st.experimental_rerun()
         else:
             st.error("Utilizador ou senha incorretos.")
+
+# --- VERIFICAÇÃO DE SESSÃO ---
+if "is_logged_in" not in st.session_state:
+    st.session_state.is_logged_in = False
+
+if not st.session_state.is_logged_in:
+    token = cookies.get("user_session")
+    if token and decode_jwt(token):
+        st.session_state.is_logged_in = True
+    else:
+        show_login_page()
+        st.stop()
+
 
 # --- BANCO DE DADOS ---
 DB_FILE = "chat_history.db"
@@ -121,16 +151,7 @@ def update_conversation_title(conversation_id, new_title):
 init_db()
 
 # --- ESTADO DE SESSÃO ---
-if "is_logged_in" not in st.session_state:
-    st.session_state.is_logged_in = False
 
-if not st.session_state.is_logged_in:
-    session_cookie = cookies.get("user_session")
-    if session_cookie == "logged_in":
-        st.session_state.is_logged_in = True
-    else:
-        show_login_page()
-        st.stop()
 
 if "current_conversation_id" not in st.session_state:
     st.session_state.current_conversation_id = None
@@ -144,7 +165,7 @@ with st.sidebar:
     if st.button("➕ Nova Conversa", use_container_width=True):
         st.session_state.current_conversation_id = None
         st.session_state.messages = []
-        st.rerun()
+        st.experimental_rerun()
 
     conversations = get_conversations()
     for conv_id, conv_title in conversations:
@@ -154,14 +175,14 @@ with st.sidebar:
                 st.session_state.current_conversation_id = conv_id
                 messages_from_db = get_messages(conv_id)
                 st.session_state.messages = [{"role": r, "type": t, "content": c} for r, t, c in messages_from_db]
-                st.rerun()
-        
+                st.experimental_rerun()
+        with col2:
             if st.button("🗑️", key=f"del_{conv_id}", help="Apagar conversa"):
                 delete_conversation(conv_id)
                 if st.session_state.current_conversation_id == conv_id:
                     st.session_state.current_conversation_id = None
                     st.session_state.messages = []
-                st.rerun()
+                st.experimental_rerun()
 
     st.divider()
     if st.button("Sair (Logout)", use_container_width=True):
