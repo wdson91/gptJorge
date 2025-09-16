@@ -25,9 +25,11 @@ def show_login_page():
     st.title("Login")
     st.info("Esta é uma aplicação de uso pessoal.")
 
-    CORRECT_USERNAME = os.getenv("LOGIN_USERNAME", "jorge")
-    CORRECT_PASSWORD = os.getenv("LOGIN_PASSWORD", "dream2025@")
+    # CORRECT_USERNAME = os.getenv("LOGIN_USERNAME", "jorge")
+    # CORRECT_PASSWORD = os.getenv("LOGIN_PASSWORD", "dream2025@")
 
+    CORRECT_USERNAME = ''
+    CORRECT_PASSWORD =''
     username = st.text_input("Utilizador", key="username_input")
     password = st.text_input("Senha", type="password", key="password_input")
 
@@ -146,14 +148,14 @@ with st.sidebar:
 
     conversations = get_conversations()
     for conv_id, conv_title in conversations:
-        col1, col2 = st.columns([4,1])
+        col1, col2 = st.columns([5,2])
         with col1:
             if st.button(conv_title, key=f"conv_{conv_id}", use_container_width=True):
                 st.session_state.current_conversation_id = conv_id
                 messages_from_db = get_messages(conv_id)
                 st.session_state.messages = [{"role": r, "type": t, "content": c} for r, t, c in messages_from_db]
                 st.rerun()
-        with col2:
+        
             if st.button("🗑️", key=f"del_{conv_id}", help="Apagar conversa"):
                 delete_conversation(conv_id)
                 if st.session_state.current_conversation_id == conv_id:
@@ -256,3 +258,24 @@ with tab_audio:
                 st.write(assistant_response)
             except Exception as e:
                 st.error(f"Erro ao processar o áudio: {e}")
+
+
+def inject_pwa():
+    st.markdown(
+        """
+        <link rel="manifest" href="static/manifest.json">
+        <script>
+            if ("serviceWorker" in navigator) {
+                window.addEventListener("load", () => {
+                    navigator.serviceWorker.register("static/service-worker.js"")
+                    .then(reg => console.log("Service Worker registrado:", reg))
+                    .catch(err => console.error("Erro no Service Worker:", err));
+                });
+            }
+        </script>
+        """,
+        unsafe_allow_html=True
+    )
+
+# Chama logo no início do app
+inject_pwa()
